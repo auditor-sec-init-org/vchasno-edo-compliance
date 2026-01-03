@@ -1,0 +1,232 @@
+# VCHASNO EDO - Deployment Configuration
+# Version: 1.0 | Last Updated: Jan 3, 2026 7:00 AM EET | Status: Phase 1 (39% Complete)
+
+deployment:
+  environment: production
+  region: us-east-1
+  vpc_id: vpc-vchasno-prod
+  
+aws_services:
+  lambda:
+    function_1:
+      name: vchasno-doc-classification
+      runtime: python3.11
+      timeout: 30
+      memory: 512
+      layers:
+        - claude-api-sdk-layer
+        - haiku-model-layer
+      env_vars:
+        MODEL: claude-haiku-3.5
+        MAX_TOKENS: 1024
+        TEMPERATURE: 0.2
+    
+    function_2:
+      name: vchasno-compliance-validation
+      runtime: python3.11
+      timeout: 60
+      memory: 1024
+      concurrency: 100
+      layers:
+        - claude-api-sdk-layer
+        - sonnet-model-layer
+      env_vars:
+        MODEL: claude-sonnet-4.5
+        TAX_CODE: 26.2
+        MAX_TOKENS: 2048
+        TEMPERATURE: 0.1
+    
+    function_3:
+      name: vchasno-ces-verification
+      runtime: python3.11
+      timeout: 120
+      memory: 2048
+      layers:
+        - claude-api-sdk-layer
+        - opus-model-layer
+      env_vars:
+        MODEL: claude-opus-4.1
+        MAX_TOKENS: 4096
+        TEMPERATURE: 0.0
+  
+  dynamodb:
+    document_metadata:
+      hash_key: document_id
+      range_key: created_at
+      billing_mode: PAY_PER_REQUEST
+      ttl:
+        enabled: true
+        attribute: expires_at
+        days: 2555  # 7 years per compliance
+    
+    compliance_results:
+      hash_key: result_id
+      billing_mode: PAY_PER_REQUEST
+      stream_spec:
+        stream_view_type: NEW_AND_OLD_IMAGES
+  
+  sqs:
+    document_queue:
+      name: vchasno-documents-queue
+      visibility_timeout: 300
+      message_retention: 1209600  # 14 days
+      delay_seconds: 0
+      batch_size: 100
+    
+    dead_letter_queue:
+      name: vchasno-dlq
+      max_receive_count: 3
+      message_retention: 1209600
+  
+  cloudwatch:
+    log_groups:
+      lambda_logs: /aws/lambda/vchasno
+      retention_days: 90
+      kms_key_id: arn:aws:kms:us-east-1:123456789:key/12345678
+    
+    alarms:
+      lambda_error_rate:
+        threshold: 1.0  # 1%
+        period: 300
+        evaluation_periods: 2
+      
+      lambda_duration:
+        threshold: 500  # milliseconds
+        statistic: Average
+      
+      sqs_queue_depth:
+        threshold: 500
+        comparison: GreaterThanThreshold
+
+github_actions:
+  ci_cd:
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        branches: [main]
+    
+    jobs:
+      test:
+        runs_on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: actions/setup-python@v4
+          - run: pip install -r requirements-test.txt
+          - run: pytest --cov=src/ --cov-report=xml
+          - uses: codecov/codecov-action@v3
+      
+      security_scan:
+        runs_on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: aquasecurity/trivy-action@master
+          - uses: github/super-linter@v4
+      
+      deploy:
+        needs: [test, security_scan]
+        runs_on: ubuntu-latest
+        environment: production
+        steps:
+          - uses: actions/checkout@v3
+          - uses: aws-actions/configure-aws-credentials@v2
+          - run: sam build
+          - run: sam deploy --no-confirm-changeset
+
+monitoring:
+  dashboard:
+    name: VCHASNO-EDO-Operations
+    refresh_interval: 60
+    metrics:
+      - DocumentProcessingLatency
+      - ComplianceValidationAccuracy
+      - CostPerDocument
+      - SystemUptime
+      - QueueDepth
+  
+  alerts:
+    email: devops@vchasno.ua
+    slack_channel: '#vchasno-alerts'
+    pagerduty_service_id: PVNCSEX
+
+security:
+  encryption:
+    at_rest:
+      algorithm: AES-256
+      key_management: KMS
+      key_rotation_days: 90
+    
+    in_transit:
+      protocol: TLS1.3
+      certificate_validation: strict
+  
+  iam:
+    service_role: vchasno-lambda-role
+    policies:
+      - dynamodb:PutItem
+      - dynamodb:GetItem
+      - dynamodb:UpdateItem
+      - sqs:SendMessage
+      - sqs:ReceiveMessage
+      - sqs:DeleteMessage
+      - logs:CreateLogGroup
+      - logs:CreateLogStream
+      - logs:PutLogEvents
+  
+  secrets:
+    api_key: /vchasno/prod/claude-api-key
+    db_password: /vchasno/prod/dynamodb-password
+    rotation_days: 90
+
+scaling:
+  lambda:
+    reserved_concurrency: 100
+    provisioned_concurrency: 50
+  
+  dynamodb:
+    read_units: AUTO
+    write_units: AUTO
+    auto_scaling: true
+
+budget:
+  monthly_limit: 450  # USD
+  alerts:
+    threshold_80: true
+    threshold_100: true
+  
+  breakdown:
+    claude_api: 50
+    aws_lambda: 200
+    aws_dynamodb: 150
+    cloudwatch: 50
+
+health_checks:
+  enabled: true
+  interval: 60  # seconds
+  timeout: 30
+  checks:
+    - lambda_invoke_test
+    - dynamodb_read_test
+    - sqs_message_send_test
+    - claude_api_connectivity
+
+rollback:
+  strategy: automatic
+  triggers:
+    - error_rate > 5%
+    - availability < 99.9%
+    - latency > 2000ms
+  retention_versions: 5
+
+compliance:
+  standards:
+    - Tax_Code_26.2
+    - DSTU_4163_2003
+    - Law_On_Electronic_Trust_Services
+  
+  audit_trail:
+    enabled: true
+    retention_days: 2555  # 7 years
+    immutable: true
+  
+  data_residency: EU  # Ukraine
