@@ -45,6 +45,7 @@ jobs:
           commit-message: "🤖 Auto-generated legal templates"
           title: "🤖 Auto-generated legal templates"
           body: "Автоматично згенеровані юридичні шаблони. Потрібне людське погодження перед злиттям."
+
   compliance-check:
     runs-on: ubuntu-latest
     steps:
