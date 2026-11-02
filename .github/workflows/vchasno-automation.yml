@@ -7,6 +7,9 @@ on:
     - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   legal-document-generation:
     runs-on: ubuntu-latest
@@ -36,11 +39,11 @@ jobs:
           echo "✓ Ukrainian law requirements met"
           
       - name: Create or Update Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: automation/legal-templates-${{ github.ref_name }}
-          base: ${{ github.ref_name }}
+          base: ${{ github.ref_type == 'branch' && github.ref_name || github.event.repository.default_branch }}
           add-paths: docs/templates/
           commit-message: "🤖 Auto-generated legal templates"
           title: "🤖 Auto-generated legal templates"
