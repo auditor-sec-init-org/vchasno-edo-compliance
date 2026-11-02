@@ -10,6 +10,9 @@ on:
 jobs:
   legal-document-generation:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
       
@@ -32,14 +35,16 @@ jobs:
           echo "✓ CES/ЕЦП standards compliant"
           echo "✓ Ukrainian law requirements met"
           
-      - name: Commit Generated Files
-        run: |
-          git config user.name "VCHASNO-Bot"
-          git config user.email "bot@vchasno.local"
-          git add docs/templates/
-          git commit -m "🤖 Auto-generated legal templates" || true
-          git push
-          
+      - name: Create or Update Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/legal-templates-${{ github.ref_name }}
+          base: ${{ github.ref_name }}
+          add-paths: docs/templates/
+          commit-message: "🤖 Auto-generated legal templates"
+          title: "🤖 Auto-generated legal templates"
+          body: "Автоматично згенеровані юридичні шаблони. Потрібне людське погодження перед злиттям."
   compliance-check:
     runs-on: ubuntu-latest
     steps:
