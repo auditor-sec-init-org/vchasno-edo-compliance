@@ -1,5 +1,8 @@
 name: VCHASNO EDO Automation & Compliance Pipeline
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main, develop]
@@ -37,8 +40,12 @@ jobs:
           git config user.name "VCHASNO-Bot"
           git config user.email "bot@vchasno.local"
           git add docs/templates/
-          git commit -m "🤖 Auto-generated legal templates" || true
-          git push
+          if git diff --cached --quiet; then
+            echo "No generated files changed."
+            exit 0
+          fi
+          git commit -m "Auto-generated legal templates"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
           
   compliance-check:
     runs-on: ubuntu-latest
